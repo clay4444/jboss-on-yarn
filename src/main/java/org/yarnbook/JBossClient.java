@@ -311,6 +311,11 @@ public class JBossClient {
         ContainerLaunchContext amContainer = Records.newRecord(ContainerLaunchContext.class);  //CLC:container launch context，
 
         /**
+         * ============================================================================
+         *        3.1 为CLC设置本地化资源，这里主要是启动ApplicationMaster的Jar包；
+         * ============================================================================
+         */
+        /**
          * 当启动一个container时，AppMaster可以指定该Container需要的所有文件，因此，这些文件都应该被本地化，一旦指定了这些文件，Yarn就会负责本地化，
          * 并且隐藏所有安全拷贝，管理以及后续的删除等引入的复杂性；
          */
@@ -327,7 +332,7 @@ public class JBossClient {
         fs.copyFromLocalFile(false, true, src, dst);  // 拷贝jar包到目标路径
         FileStatus destStatus = fs.getFileStatus(dst);
 
-        //LocalResource AppMaster作业文件jar包；
+        //LocalResource AppMaster作业文件jar包； 是需要本地化的资源
         LocalResource amJarRsrc = Records.newRecord(LocalResource.class);
 
         amJarRsrc.setType(LocalResourceType.FILE); //资源类型
@@ -359,20 +364,21 @@ public class JBossClient {
 
         /**
          * ============================================================================
-         *              4.为container0(运行AppMaster的container) 设置需要的环境变量
+         *        3.1 为CLC设置环境变量
          * ============================================================================
          */
         LOG.info("Set the environment for the application master");
         Map<String, String> env = new HashMap<String, String>();
 
         StringBuilder classPathEnv = new StringBuilder(
-                Environment.CLASSPATH.$()).append(File.pathSeparatorChar)
-                .append("./*");
+                Environment.CLASSPATH.$()).append(File.pathSeparatorChar)  //pathSeparatorChar,路径分割符
+                .append("./*"); //classpath 加上当前路径
+
         for (String c : conf.getStrings(
                 YarnConfiguration.YARN_APPLICATION_CLASSPATH,
                 YarnConfiguration.DEFAULT_YARN_APPLICATION_CLASSPATH)) {
             classPathEnv.append(File.pathSeparatorChar);
-            classPathEnv.append(c.trim());
+            classPathEnv.append(c.trim());  //classpath 加上 yarn.application.classpath
         }
         classPathEnv.append(File.pathSeparatorChar)
                 .append("./log4j.properties");
