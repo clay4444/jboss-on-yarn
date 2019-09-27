@@ -105,7 +105,7 @@ public class JBossClient {
             LOG.log(Level.SEVERE, "Error running JBoss Client", t);
             System.exit(1);
         }
-        if (result) {
+        if (result) { //true 说明程序正常运行结束；
             LOG.info("Application completed successfully");
             System.exit(0);
         }
@@ -364,7 +364,7 @@ public class JBossClient {
 
         /**
          * ============================================================================
-         *        3.1 为CLC设置环境变量
+         *        3.2 为CLC设置环境变量
          * ============================================================================
          */
         LOG.info("Set the environment for the application master");
@@ -392,12 +392,17 @@ public class JBossClient {
 
         amContainer.setEnvironment(env);
 
+        /**
+         * ============================================================================
+         *        3.3 为CLC设置启动命令，也就是在container0启动AppMaster
+         * ============================================================================
+         */
         Vector<CharSequence> vargs = new Vector<CharSequence>(30);
 
         LOG.info("Setting up app master command");
         vargs.add(Environment.JAVA_HOME.$() + "/bin/java");
         vargs.add("-Xmx" + amMemory + "m");
-        vargs.add(appMasterMainClass);
+        vargs.add(appMasterMainClass);       //启动AppMaster的主类；
         vargs.add("--container_memory " + String.valueOf(containerMemory));
         vargs.add("--num_containers " + String.valueOf(numContainers));
         vargs.add("--priority " + String.valueOf(shellCmdPriority));
@@ -425,20 +430,45 @@ public class JBossClient {
         commands.add(command.toString());
         amContainer.setCommands(commands);
 
+        /**
+         * ============================================================================
+         *        3.4 为Application Submission Context 设置资源容量大小，也就是内存大小
+         * ============================================================================
+         */
         Resource capability = Records.newRecord(Resource.class);
         capability.setMemory(amMemory);
         appContext.setResource(capability);
 
+        /**
+         * ============================================================================
+         *        3.5 为Application Submission Context 配置刚才设置好的CLC,用来启动container0
+         * ============================================================================
+         */
         appContext.setAMContainerSpec(amContainer);
 
+        /**
+         * ============================================================================
+         *        3.5 为Application Submission Context 配置优先级
+         * ============================================================================
+         */
         Priority pri = Records.newRecord(Priority.class);
         pri.setPriority(amPriority);
         appContext.setPriority(pri);
 
+        /**
+         * ============================================================================
+         *        3.5 为Application Submission Context 配置运行队列
+         * ============================================================================
+         */
         appContext.setQueue(amQueue);
 
         LOG.info("Submitting the application to ASM");
 
+        /**
+         * ============================================================================
+         *        3.6 把Application Submission Context 提交到YarnClient
+         * ============================================================================
+         */
         yarnClient.submitApplication(appContext);
 
         return monitorApplication(appId);
@@ -481,11 +511,11 @@ public class JBossClient {
                     + ", appTrackingUrl=" + report.getTrackingUrl()
                     + ", appUser=" + report.getUser());
 
-            YarnApplicationState state = report.getYarnApplicationState();
-            FinalApplicationStatus jbossStatus = report
+            YarnApplicationState state = report.getYarnApplicationState();  //当前状态
+            FinalApplicationStatus jbossStatus = report  //最终状态
                     .getFinalApplicationStatus();
             if (YarnApplicationState.FINISHED == state) {
-                if (FinalApplicationStatus.SUCCEEDED == jbossStatus) {
+                if (FinalApplicationStatus.SUCCEEDED == jbossStatus) { //完成 且 最终状态为成功；
                     LOG.info("Application has completed successfully. Breaking monitoring loop");
                     return true;
                 } else {
@@ -496,7 +526,7 @@ public class JBossClient {
                     return false;
                 }
             } else if (YarnApplicationState.KILLED == state
-                    || YarnApplicationState.FAILED == state) {
+                    || YarnApplicationState.FAILED == state) { //失败 / 被杀死
                 LOG.info("Application did not finish." + " YarnState="
                         + state.toString() + ", JBASFinalStatus="
                         + jbossStatus.toString() + ". Breaking monitoring loop");

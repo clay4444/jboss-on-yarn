@@ -83,8 +83,8 @@ public class JBossApplicationMaster {
     private Configuration conf;
 
     @SuppressWarnings("rawtypes")
-    private AMRMClientAsync resourceManager;
-    private NMClientAsync nmClientAsync;
+    private AMRMClientAsync resourceManager;  //负责和ResourceManager进行通信，以此来提供异步更新事件，比如容器分配和完成，内部通过一个线程周期性的和RM进行通信；
+    private NMClientAsync nmClientAsync;  //负责和NodeManager进行通信，得到响应，以此来提供异步更新事件，内部包含一个线程池，每个线程通过使用${NMClientImpl}与每个独立的NodeManager进行通信，线程池大小可配置；
     private NMCallbackHandler containerListener;
 
     private ApplicationAttemptId appAttemptID;
@@ -93,17 +93,17 @@ public class JBossApplicationMaster {
     private int appMasterRpcPort = 0;
     private String appMasterTrackingUrl = "";
 
-    private int numTotalContainers = 2;
-    private int containerMemory = 1024;
-    private int requestPriority;
+    private int numTotalContainers = 2;  //container 个数
+    private int containerMemory = 1024;  //单个container的内存大小
+    private int requestPriority;    //优先级
 
-    private String adminUser;
-    private String adminPassword;
+    private String adminUser;           //adminUser
+    private String adminPassword;      //adminPassword
 
-    private AtomicInteger numCompletedContainers = new AtomicInteger();
-    private AtomicInteger numAllocatedContainers = new AtomicInteger();
-    private AtomicInteger numFailedContainers = new AtomicInteger();
-    private AtomicInteger numRequestedContainers = new AtomicInteger();
+    private AtomicInteger numCompletedContainers = new AtomicInteger(); //完成的container个数
+    private AtomicInteger numAllocatedContainers = new AtomicInteger();  //已分配的container个数
+    private AtomicInteger numFailedContainers = new AtomicInteger();    //失败的container个数
+    private AtomicInteger numRequestedContainers = new AtomicInteger(); //已请求的container个数
 
     private Map<String, String> shellEnv = new HashMap<String, String>();
 
@@ -114,7 +114,7 @@ public class JBossApplicationMaster {
     private volatile boolean done;
     private volatile boolean success;
 
-    private List<Thread> launchThreads = new ArrayList<Thread>();
+    private List<Thread> launchThreads = new ArrayList<Thread>();  //多个线程？
 
     /**
      * @param args
@@ -123,13 +123,13 @@ public class JBossApplicationMaster {
     public static void main(String[] args) {
         boolean result = false;
         try {
-            JBossApplicationMaster appMaster = new JBossApplicationMaster();
+            JBossApplicationMaster appMaster = new JBossApplicationMaster();  //给conf 赋值，直接new，从环境变量找；
             LOG.info("Initializing JBossApplicationMaster");
-            boolean doRun = appMaster.init(args);
+            boolean doRun = appMaster.init(args); //解析命令行参数，并赋给当前的全局变量
             if (!doRun) {
                 System.exit(0);
             }
-            result = appMaster.run();
+            result = appMaster.run();  //run方法
         } catch (Throwable t) {
             LOG.log(Level.SEVERE, "Error running JBossApplicationMaster", t);
             System.exit(1);
@@ -145,11 +145,12 @@ public class JBossApplicationMaster {
 
     /**
      * Dump out contents of $CWD and the environment to stdout for debugging
+     * debug模式下，打印CMD路径的所有环境变量和文件；
      */
     private void dumpOutDebugInfo() {
 
         LOG.info("Dump debug output");
-        Map<String, String> envs = System.getenv();
+        Map<String, String> envs = System.getenv();  //打印所有环境变量
         for (Map.Entry<String, String> env : envs.entrySet()) {
             LOG.info("System env: key=" + env.getKey() + ", val="
                     + env.getValue());
@@ -157,7 +158,7 @@ public class JBossApplicationMaster {
                     + env.getValue());
         }
 
-        String cmd = "ls -al";
+        String cmd = "ls -al";               //打印当前执行命令的文件夹的所有文件；
         Runtime run = Runtime.getRuntime();
         Process pr = null;
         try {
@@ -194,9 +195,10 @@ public class JBossApplicationMaster {
      */
     public boolean init(String[] args) throws ParseException, IOException {
 
+        //这些参数都是在JBossClient设置CLC的container启动命令的时候赋值过来的；
         Options opts = new Options();
         opts.addOption("app_attempt_id", true,
-                "App Attempt ID. Not to be used unless for testing purposes");
+                "App Attempt ID. Not to be used unless for testing purposes");//测试的时候使用；
         opts.addOption("admin_user", true,
                 "User id for initial administrator user");
         opts.addOption("admin_password", true,
@@ -218,21 +220,21 @@ public class JBossApplicationMaster {
                     "No args specified for application master to initialize");
         }
 
-        if (cliParser.hasOption("help")) {
+        if (cliParser.hasOption("help")) {  //查看运行参数列表
             printUsage(opts);
             return false;
         }
 
-        if (cliParser.hasOption("debug")) {
+        if (cliParser.hasOption("debug")) {  //debug模式
             dumpOutDebugInfo();
         }
 
-        Map<String, String> envs = System.getenv();
+        Map<String, String> envs = System.getenv();  //获取环境变量
 
         ContainerId containerId = ConverterUtils.toContainerId(envs
                 .get(Environment.CONTAINER_ID.name()));
 
-        if (!envs.containsKey(Environment.CONTAINER_ID.name())) {
+        if (!envs.containsKey(Environment.CONTAINER_ID.name())) {  //appAttemptID 赋值
             if (cliParser.hasOption("app_attempt_id")) {
                 String appIdStr = cliParser
                         .getOptionValue("app_attempt_id", "");
@@ -247,19 +249,19 @@ public class JBossApplicationMaster {
             appAttemptID = containerId.getApplicationAttemptId();
         }
 
-        if (!envs.containsKey(ApplicationConstants.APP_SUBMIT_TIME_ENV)) {
+        if (!envs.containsKey(ApplicationConstants.APP_SUBMIT_TIME_ENV)) {  //The environment variable for APP_SUBMIT_TIME. Set in AppMaster environment only
             throw new RuntimeException(ApplicationConstants.APP_SUBMIT_TIME_ENV
                     + " not set in the environment");
         }
-        if (!envs.containsKey(Environment.NM_HOST.name())) {
+        if (!envs.containsKey(Environment.NM_HOST.name())) {  //NodeManager host地址
             throw new RuntimeException(Environment.NM_HOST.name()
                     + " not set in the environment");
         }
-        if (!envs.containsKey(Environment.NM_HTTP_PORT.name())) {
+        if (!envs.containsKey(Environment.NM_HTTP_PORT.name())) {  //NodeManager  http 端口
             throw new RuntimeException(Environment.NM_HTTP_PORT
                     + " not set in the environment");
         }
-        if (!envs.containsKey(Environment.NM_PORT.name())) {
+        if (!envs.containsKey(Environment.NM_PORT.name())) {    //NodeManager 端口
             throw new RuntimeException(Environment.NM_PORT.name()
                     + " not set in the environment");
         }
@@ -270,18 +272,18 @@ public class JBossApplicationMaster {
                 + appAttemptID.getApplicationId().getClusterTimestamp()
                 + ", attemptId=" + appAttemptID.getAttemptId());
 
-        containerMemory = Integer.parseInt(cliParser.getOptionValue(
+        containerMemory = Integer.parseInt(cliParser.getOptionValue(  //containerMemory
                 "container_memory", "1024"));
-        numTotalContainers = Integer.parseInt(cliParser.getOptionValue(
+        numTotalContainers = Integer.parseInt(cliParser.getOptionValue(  //numTotalContainers
                 "num_containers", "1"));
-        adminUser = cliParser.getOptionValue("admin_user", "yarn");
-        adminPassword = cliParser.getOptionValue("admin_password", "yarn");
-        appJar = cliParser.getOptionValue("jar");
+        adminUser = cliParser.getOptionValue("admin_user", "yarn");   //adminUser
+        adminPassword = cliParser.getOptionValue("admin_password", "yarn");  //adminPassword
+        appJar = cliParser.getOptionValue("jar");                                   //appJar
         if (numTotalContainers == 0) {
             throw new IllegalArgumentException(
                     "Cannot run JBoss Application Master with no containers");
         }
-        requestPriority = Integer.parseInt(cliParser.getOptionValue("priority",
+        requestPriority = Integer.parseInt(cliParser.getOptionValue("priority", //requestPriority
                 "0"));
 
         return true;
@@ -298,8 +300,8 @@ public class JBossApplicationMaster {
     }
 
     /**
+     * AppMaster 真正的执行方法，
      * Main run function for the application master
-     *
      * @throws YarnException
      * @throws IOException
      */
@@ -695,7 +697,7 @@ public class JBossApplicationMaster {
     /**
      * Setup the request that will be sent to the RM for the container ask.
      *
-     * @param numContainers
+     * //@param numContainers
      *            Containers to ask for from RM
      * @return the setup ResourceRequest to be sent to RM
      */
