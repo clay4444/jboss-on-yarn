@@ -186,7 +186,6 @@ public class JBossApplicationMaster {
 
     /**
      * Parse command line options
-     *
      * @param args
      *            Command line args
      * @return Whether init successful and run should be invoked
@@ -360,7 +359,7 @@ public class JBossApplicationMaster {
          * 0.所有请求的container都成功结束 (最好的情况，也应该是大部分的时候出现的情况)
          * 1.所有请求的container都已经结束，（ 不保证所有container都正常结束，可能有的container是无法恢复的失败 ）
          * 2.rm 因为不同步或者其他原因，希望 shutdown 此ApplicationMaster
-         * 2.ApplicationMaster 发生异常 / 和rm 通信异常
+         * 2.ApplicationMaster 本身程序发生异常 / 和rm 通信异常
          */
         while (!done) {
             try {
@@ -625,7 +624,9 @@ public class JBossApplicationMaster {
 
             ctx.setEnvironment(shellEnv); //1.1 为 CLC 构建执行环境
 
-            Map<String, LocalResource> localResources = new HashMap<String, LocalResource>(); //1.2 为 CLC 设置需要本地化的资源
+
+            //1.2 为 CLC 设置需要本地化的资源(jboss本身的jar和要部署到jboss中运行的jar包，要部署到jboss中运行的jar已经被拷贝到了home目录 )
+            Map<String, LocalResource> localResources = new HashMap<String, LocalResource>();
 
             String applicationId = container.getId().getApplicationAttemptId()
                     .getApplicationId().toString();
@@ -638,21 +639,21 @@ public class JBossApplicationMaster {
                 jbossDist.setVisibility(LocalResourceVisibility.APPLICATION); //应用级别
 
                 Path jbossDistPath = new Path(new URI(
-                        JBossConstants.JBOSS_DIST_PATH));
+                        JBossConstants.JBOSS_DIST_PATH));  //1. jBoss本身jar包；hdfs://yarn1.apps.hdp:9000/apps/jboss/dist/jboss-as-7.1.1.Final.tar.gz
                 jbossDist.setResource(ConverterUtils
                         .getYarnUrlFromPath(jbossDistPath));
 
-                jbossDist.setTimestamp(fs.getFileStatus(jbossDistPath)
+                jbossDist.setTimestamp(fs.getFileStatus(jbossDistPath)   //时间戳
                         .getModificationTime());
-                jbossDist.setSize(fs.getFileStatus(jbossDistPath).getLen());
-                localResources.put(JBossConstants.JBOSS_SYMLINK, jbossDist);
+                jbossDist.setSize(fs.getFileStatus(jbossDistPath).getLen());  //大小
+                localResources.put(JBossConstants.JBOSS_SYMLINK, jbossDist);  //放进 localResources 这个map
 
                 LocalResource jbossConf = Records
                         .newRecord(LocalResource.class);
-                jbossConf.setType(LocalResourceType.FILE);
+                jbossConf.setType(LocalResourceType.FILE);      //2. 要放进jboss容器中部署的应用jar
                 jbossConf.setVisibility(LocalResourceVisibility.APPLICATION);
 
-                Path jbossConfPath = new Path(new URI(appJar));
+                Path jbossConfPath = new Path(new URI(appJar));  //拷贝到home目录的应用jar，  /user/yarn/appName/appId/JBossApp.jar
                 jbossConf.setResource(ConverterUtils
                         .getYarnUrlFromPath(jbossConfPath));
 
@@ -670,6 +671,7 @@ public class JBossApplicationMaster {
 
             ctx.setLocalResources(localResources);
 
+            //1.1 为 CLC 构建执行命令
             List<String> commands = new ArrayList<String>();
 
             String host = container.getNodeId().getHost(); //host地址；
@@ -730,7 +732,10 @@ public class JBossApplicationMaster {
 
             ctx.setCommands(commands);
 
+            //2.对此container设置监听
             containerListener.addContainer(container.getId(), container);
+
+            //3.使用构建好的CLC启动该container
             nmClientAsync.startContainerAsync(container, ctx);
         }
     }
