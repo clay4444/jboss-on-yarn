@@ -61,15 +61,15 @@ public class JBossClient {
     private String appName = "";
     private int amPriority = 0;    //AppMaster 优先级
     private String amQueue = "";   //AppMaster 所属队列
-    private int amMemory = 1024;   //AppMaster 内存大小
+    private int amMemory = 1024;   //启动 AppMaster 需要的内存大小
 
     private String appJar = "";
     private final String appMasterMainClass = JBossApplicationMaster.class.getName();  //AppMaster的主类名？
 
     private int shellCmdPriority = 0;
 
-    private int containerMemory = 1024;  //单个container的内存大小
-    private int numContainers = 2;   //container的个数
+    private int containerMemory = 1024;  // AppMaster要启动的应用要申请的单个container的内存大小
+    private int numContainers = 2;   //AppMaster要启动的应用要申请的单个container的container的个数
 
     private String adminUser;       //用户名
     private String adminPassword;   //密码
@@ -322,12 +322,12 @@ public class JBossClient {
         Map<String, LocalResource> localResources = new HashMap<String, LocalResource>();  //需要本地化的资源
 
         LOG.info("Copy App Master jar from local filesystem and add to local environment");
-        FileSystem fs = FileSystem.get(conf);    //也就是说路径都在hdfs上
-        Path src = new Path(appJar);  //原始目录
+        FileSystem fs = FileSystem.get(conf);
+        Path src = new Path(appJar);  //原始目录在YarnClient这台机器本地，需要拷贝到 hdfs 上；
         String pathSuffix = appName + File.separator + appId.getId()  //   appName/appId/JBossApp.jar
                 + File.separator
                 + JBossConstants.JBOSS_ON_YARN_APP;
-        Path dst = new Path(fs.getHomeDirectory(), pathSuffix);   //  jar包要放的目标路径  /user/yarn/appName/appId/JBossApp.jar
+        Path dst = new Path(fs.getHomeDirectory(), pathSuffix);   //  jar包要放的目标路径(hdfs)  /user/yarn/appName/appId/JBossApp.jar
         jbossAppUri = dst.toUri().toString();
         fs.copyFromLocalFile(false, true, src, dst);  // 拷贝jar包到目标路径
         FileStatus destStatus = fs.getFileStatus(dst);
@@ -432,7 +432,7 @@ public class JBossClient {
 
         /**
          * ============================================================================
-         *        3.4 为Application Submission Context 设置资源容量大小，也就是内存大小
+         *        3.4 为 Application Submission Context 设置资源容量大小，也就是内存大小
          * ============================================================================
          */
         Resource capability = Records.newRecord(Resource.class);
@@ -441,7 +441,7 @@ public class JBossClient {
 
         /**
          * ============================================================================
-         *        3.5 为Application Submission Context 配置刚才设置好的CLC,用来启动container0
+         *        3.5 为 Application Submission Context 配置刚才设置好的CLC,用来启动container0
          * ============================================================================
          */
         appContext.setAMContainerSpec(amContainer);
@@ -467,6 +467,7 @@ public class JBossClient {
         /**
          * ============================================================================
          *        3.6 把Application Submission Context 提交到YarnClient
+         *        这个方法会一直阻塞，直到ResourceManager返回应用程序的状态为 Accepted
          * ============================================================================
          */
         yarnClient.submitApplication(appContext);

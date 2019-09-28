@@ -15,7 +15,7 @@ public interface JBossConstants {
 
     public static final String JBOSS_CONTAINER_LOG_DIR = "/var/log/hadoop/yarn";
 
-    public static final String JBOSS_ON_YARN_APP = "JBossApp.jar";  //App jar
+    public static final String JBOSS_ON_YARN_APP = "JBossApp.jar";  //App jar，也就是当前项目打包后的jar
 
     public static final String COMMAND_CHAIN = " && ";
 }

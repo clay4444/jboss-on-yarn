@@ -625,7 +625,7 @@ public class JBossApplicationMaster {
             ctx.setEnvironment(shellEnv); //1.1 为 CLC 构建执行环境
 
 
-            //1.2 为 CLC 设置需要本地化的资源(jboss本身的jar和要部署到jboss中运行的jar包，要部署到jboss中运行的jar已经被拷贝到了home目录 )
+            //1.2 为 CLC 设置需要本地化的资源(jboss本身的jar和要部署到jboss中运行的jar包，要部署到jboss中运行的jar已经被拷贝到了hdfs home目录 )
             Map<String, LocalResource> localResources = new HashMap<String, LocalResource>();
 
             String applicationId = container.getId().getApplicationAttemptId()
@@ -635,13 +635,13 @@ public class JBossApplicationMaster {
 
                 LocalResource jbossDist = Records
                         .newRecord(LocalResource.class);
-                jbossDist.setType(LocalResourceType.ARCHIVE); //压缩文件
+                jbossDist.setType(LocalResourceType.ARCHIVE); //压缩文件 tar.gz格式，Yarn会自动解压这个文件，并创建一个本地符号链接，这个符号链接的名字就是map中的key字符串
                 jbossDist.setVisibility(LocalResourceVisibility.APPLICATION); //应用级别
 
                 Path jbossDistPath = new Path(new URI(
                         JBossConstants.JBOSS_DIST_PATH));  //1. jBoss本身jar包；hdfs://yarn1.apps.hdp:9000/apps/jboss/dist/jboss-as-7.1.1.Final.tar.gz
                 jbossDist.setResource(ConverterUtils
-                        .getYarnUrlFromPath(jbossDistPath));
+                        .getYarnUrlFromPath(jbossDistPath));//如果文件是在hdfs上，可以通过一个便利的方法来创建LocalResource对象，ConverterUtils.getYarnUrlFromPath()
 
                 jbossDist.setTimestamp(fs.getFileStatus(jbossDistPath)   //时间戳
                         .getModificationTime());
@@ -655,7 +655,7 @@ public class JBossApplicationMaster {
 
                 Path jbossConfPath = new Path(new URI(appJar));  //拷贝到home目录的应用jar，  /user/yarn/appName/appId/JBossApp.jar
                 jbossConf.setResource(ConverterUtils
-                        .getYarnUrlFromPath(jbossConfPath));
+                        .getYarnUrlFromPath(jbossConfPath));  //也在hdfs上；
 
                 jbossConf.setTimestamp(fs.getFileStatus(jbossConfPath)
                         .getModificationTime());
@@ -671,11 +671,25 @@ public class JBossApplicationMaster {
 
             ctx.setLocalResources(localResources);
 
-            //1.1 为 CLC 构建执行命令
+            /**
+             * 1.1 为 CLC 构建执行命令
+             *    1.设置解压后的JBoss AS文件的权限
+             *    2.通过启动JBossConfiguration类来修改JBoss AS的默认配置文件，
+             *    3.运行JBoss AS 实例
+             */
             List<String> commands = new ArrayList<String>();
 
             String host = container.getNodeId().getHost(); //host地址；
 
+            /**
+             * 每个Container本地文件系统的根目录由 yarn-site.xml文件中的属性 yarn.nodemanager.local-dirs 定义
+             * 在这个根目录下，NodeManager会为每个Container创建它自己的子目录，要注意的是，container终止以后，这个子目录会被删除，这给开发带来一些困难，
+             * 幸运的是，Yarn可以配置container的目录保留多久再删除，yarn-site.xml文件中的属性 yarn.nodemanager.delete.debug-delay.sec，
+             * 调试Yarn Application时，最好把这个值设的大一点；这样有充分的时间检查container的本地目录和文件；
+             *
+             * 也就是说上面设置的 localResources(需要被本地化的文件)都被yarn框架拷贝到 yarn.nodemanager.local-dirs定义的目录下的 /usercache/user/appcache/appId (根据可见性级别不同在不同的目录) 了，
+             * 直接在这里执行jar包就可以；
+             */
             String containerHome = conf.get("yarn.nodemanager.local-dirs")
                     + File.separator + ContainerLocalizer.USERCACHE
                     + File.separator
